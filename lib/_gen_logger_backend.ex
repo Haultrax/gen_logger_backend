@@ -17,6 +17,9 @@ defmodule GenLoggerBackend do
   @impl true
   def init(backend_name) when is_atom(backend_name) do
     config = Application.get_env(:logger, backend_name)
+    config = Keyword.put_new_lazy(config, :backend_name, fn -> backend_name end)
+
+    # special
     device = Keyword.get(config, :device, :user)
 
     if Process.whereis(device) do
@@ -34,8 +37,10 @@ defmodule GenLoggerBackend do
 
   @impl true
   def handle_call({:configure, options}, state) do
-    config = configure_merge(Application.get_env(:logger, :console), options)
-    {:ok, :ok, Console.configure(config, state)}
+    backend_name = state[:backend_name]
+    config = configure_merge(Application.get_env(:logger, backend_name), options)
+    Application.put_env(:logger, backend_name, config)
+    {:ok, :ok, Console.init(config, state)}
   end
 
   @impl true
@@ -47,8 +52,8 @@ defmodule GenLoggerBackend do
     end
   end
 
+  # special?
   def handle_event(:flush, state) do
-    # special?
     {:ok, Console.flush(state)}
   end
 
@@ -57,8 +62,8 @@ defmodule GenLoggerBackend do
   end
 
   @impl true
+  # special?
   def handle_info({:io_reply, ref, msg}, %{ref: ref} = state) do
-    # special?
     {:ok, Console.handle_io_reply(msg, state)}
   end
 

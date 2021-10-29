@@ -1,9 +1,4 @@
 defmodule GenLoggerBackend.Console do
-  def configure(config, state) do
-    Application.put_env(:logger, :console, config)
-    init(config, state)
-  end
-
   def init(config, state) do
     level = Keyword.get(config, :level)
     device = Keyword.get(config, :device, :user)
@@ -23,8 +18,8 @@ defmodule GenLoggerBackend.Console do
     }
   end
 
-  def configure_metadata(:all), do: :all
-  def configure_metadata(metadata), do: Enum.reverse(metadata)
+  defp configure_metadata(:all), do: :all
+  defp configure_metadata(metadata), do: Enum.reverse(metadata)
 
 
   defp configure_colors(config) do
