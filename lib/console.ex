@@ -1,105 +1,10 @@
-defmodule GenLoggerBackend do
-  @behaviour :gen_event
-
-  defstruct buffer: [],
-            buffer_size: 0,
-            colors: nil,
-            device: nil,
-            format: nil,
-            level: nil,
-            max_buffer: nil,
-            metadata: nil,
-            output: nil,
-            ref: nil
-
-  @impl true
-  def init(:console) do
-    config = Application.get_env(:logger, :console)
-    device = Keyword.get(config, :device, :user)
-
-    if Process.whereis(device) do
-      {:ok, init(config, %__MODULE__{})}
-    else
-      {:error, :ignore}
-    end
-  end
-
-  def init({__MODULE__, opts}) when is_list(opts) do
-    config = configure_merge(Application.get_env(:logger, :console), opts)
-    {:ok, init(config, %__MODULE__{})}
-  end
-
-  @impl true
-  def handle_call({:configure, options}, state) do
-    {:ok, :ok, configure(options, state)}
-  end
-
-  @impl true
-  def handle_event({level, _gl, {Logger, msg, ts, md}}, state) do
-    %{level: log_level, ref: ref, buffer_size: buffer_size, max_buffer: max_buffer} = state
-
-    cond do
-      not meet_level?(level, log_level) ->
-        {:ok, state}
-
-      is_nil(ref) ->
-        {:ok, log_event(level, msg, ts, md, state)}
-
-      buffer_size < max_buffer ->
-        {:ok, buffer_event(level, msg, ts, md, state)}
-
-      buffer_size === max_buffer ->
-        state = buffer_event(level, msg, ts, md, state)
-        {:ok, await_io(state)}
-    end
-  end
-
-  def handle_event(:flush, state) do
-    {:ok, flush(state)}
-  end
-
-  def handle_event(_, state) do
-    {:ok, state}
-  end
-
-  @impl true
-  def handle_info({:io_reply, ref, msg}, %{ref: ref} = state) do
-    {:ok, handle_io_reply(msg, state)}
-  end
-
-  def handle_info({:DOWN, ref, _, pid, reason}, %{ref: ref}) do
-    raise "device #{inspect(pid)} exited: " <> Exception.format_exit(reason)
-  end
-
-  def handle_info(_, state) do
-    {:ok, state}
-  end
-
-  @impl true
-  def code_change(_old_vsn, state, _extra) do
-    {:ok, state}
-  end
-
-  @impl true
-  def terminate(_reason, _state) do
-    :ok
-  end
-
-  ## Helpers
-
-  defp meet_level?(_lvl, nil), do: true
-
-  defp meet_level?(lvl, min) do
-    Logger.compare_levels(lvl, min) != :lt
-  end
-
-  defp configure(options, state) do
-    config = configure_merge(Application.get_env(:logger, :console), options)
+defmodule GenLoggerBackend.Console do
+  def configure(config, state) do
     Application.put_env(:logger, :console, config)
     init(config, state)
   end
 
-  defp init(config, state) do
+  def init(config, state) do
     level = Keyword.get(config, :level)
     device = Keyword.get(config, :device, :user)
     format = Logger.Formatter.compile(Keyword.get(config, :format))
@@ -118,15 +23,9 @@ defmodule GenLoggerBackend do
     }
   end
 
-  defp configure_metadata(:all), do: :all
-  defp configure_metadata(metadata), do: Enum.reverse(metadata)
+  def configure_metadata(:all), do: :all
+  def configure_metadata(metadata), do: Enum.reverse(metadata)
 
-  defp configure_merge(env, options) do
-    Keyword.merge(env, options, fn
-      :colors, v1, v2 -> Keyword.merge(v1, v2)
-      _, _v1, v2 -> v2
-    end)
-  end
 
   defp configure_colors(config) do
     colors = Keyword.get(config, :colors, [])
@@ -138,6 +37,22 @@ defmodule GenLoggerBackend do
       error: Keyword.get(colors, :error, :red),
       enabled: Keyword.get(colors, :enabled, IO.ANSI.enabled?())
     }
+  end
+
+  def handle_event(level, msg, ts, md, state) do
+    %{ref: ref, buffer_size: buffer_size, max_buffer: max_buffer} = state
+
+    cond do
+      is_nil(ref) ->
+        {:ok, log_event(level, msg, ts, md, state)}
+
+      buffer_size < max_buffer ->
+        {:ok, buffer_event(level, msg, ts, md, state)}
+
+      buffer_size === max_buffer ->
+        state = buffer_event(level, msg, ts, md, state)
+        {:ok, await_io(state)}
+    end
   end
 
   defp log_event(level, msg, ts, md, %{device: device} = state) do
@@ -218,20 +133,20 @@ defmodule GenLoggerBackend do
     %{state | ref: async_io(device, buffer), buffer: [], buffer_size: 0, output: buffer}
   end
 
-  defp handle_io_reply(:ok, %{ref: ref} = state) do
+  def handle_io_reply(:ok, %{ref: ref} = state) do
     Process.demonitor(ref, [:flush])
     log_buffer(%{state | ref: nil, output: nil})
   end
 
-  defp handle_io_reply({:error, {:put_chars, :unicode, _} = error}, state) do
+  def handle_io_reply({:error, {:put_chars, :unicode, _} = error}, state) do
     retry_log(error, state)
   end
 
-  defp handle_io_reply({:error, :put_chars}, %{output: output} = state) do
+  def handle_io_reply({:error, :put_chars}, %{output: output} = state) do
     retry_log({:put_chars, :unicode, output}, state)
   end
 
-  defp handle_io_reply({:error, error}, _) do
+  def handle_io_reply({:error, error}, _) do
     raise "failure while logging console messages: " <> inspect(error)
   end
 
@@ -255,9 +170,9 @@ defmodule GenLoggerBackend do
     end
   end
 
-  defp flush(%{ref: nil} = state), do: state
+  def flush(%{ref: nil} = state), do: state
 
-  defp flush(state) do
+  def flush(state) do
     state
     |> await_io()
     |> flush()
