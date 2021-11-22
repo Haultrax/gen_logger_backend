@@ -1,4 +1,8 @@
 defmodule GenLoggerBackend.Console do
+  """
+  https://github.com/elixir-lang/elixir/blob/a64d42f5d3cb6c32752af9d3312897e8cd5bb7ec/lib/logger/lib/logger/backends/console.ex#L1
+  """
+
   def init(config, state) do
     level = Keyword.get(config, :level)
     device = Keyword.get(config, :device, :user)
